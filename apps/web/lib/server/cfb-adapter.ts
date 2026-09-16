@@ -4,7 +4,12 @@ import type {
   PlayerCandidate,
 } from '@perfect-season/sport-engine-core';
 import { createRng, createSeed } from '@perfect-season/sport-engine-core/utils';
-import type { CfbFixtureData, CfbSportEngine } from '@perfect-season/sport-engine-cfb';
+import type {
+  CfbFixtureData,
+  CfbPlayer,
+  CfbRating,
+  CfbSportEngine,
+} from '@perfect-season/sport-engine-cfb';
 import {
   buildCfbOpponentSlate,
   CFB_RATING_MODEL_VERSION,
@@ -49,11 +54,42 @@ const CFB_FALLBACK_POSITIONS = [
   'P',
 ] as const;
 
+interface CfbIndex {
+  readonly playersById: Map<string, CfbPlayer>;
+  readonly ratingsByUnit: Map<string, CfbRating[]>;
+  readonly candidatesByUnit: Map<string, PlayerCandidate[]>;
+}
+
+// The fixture holds ~300k players/ratings across 20+ seasons; index once per
+// dataset instead of rescanning on every spin, pick, and roster build.
+const cfbIndexCache = new WeakMap<CfbFixtureData, CfbIndex>();
+
+function cfbIndex(data: CfbFixtureData): CfbIndex {
+  let index = cfbIndexCache.get(data);
+  if (index !== undefined) return index;
+  const ratingsByUnit = new Map<string, CfbRating[]>();
+  for (const rating of data.ratings) {
+    const key = `${rating.cfbdTeamId}:${rating.season}`;
+    const bucket = ratingsByUnit.get(key);
+    if (bucket === undefined) ratingsByUnit.set(key, [rating]);
+    else bucket.push(rating);
+  }
+  index = {
+    playersById: new Map(data.players.map((player) => [player.cfbdPlayerId, player])),
+    ratingsByUnit,
+    candidatesByUnit: new Map(),
+  };
+  cfbIndexCache.set(data, index);
+  return index;
+}
+
 function buildCfbCandidates(unit: CfbDraftPoolUnit, data: CfbFixtureData): PlayerCandidate[] {
-  const ratings = data.ratings.filter(
-    (rating) => rating.cfbdTeamId === Number(unit.programId) && rating.season === unit.season,
-  );
-  const players = new Map(data.players.map((player) => [player.cfbdPlayerId, player]));
+  const index = cfbIndex(data);
+  const unitKey = `${unit.programId}:${unit.season}`;
+  const cached = index.candidatesByUnit.get(unitKey);
+  if (cached !== undefined) return cached;
+  const ratings = index.ratingsByUnit.get(`${Number(unit.programId)}:${unit.season}`) ?? [];
+  const players = index.playersById;
   const seen = new Set<string>();
   const candidates = ratings.flatMap((rating) => {
     if (seen.has(rating.cfbdPlayerId)) return [];
@@ -112,7 +148,9 @@ function buildCfbCandidates(unit: CfbDraftPoolUnit, data: CfbFixtureData): Playe
       },
     };
   });
-  return [...candidates, ...proxies];
+  const result = [...candidates, ...proxies];
+  index.candidatesByUnit.set(unitKey, result);
+  return result;
 }
 
 function completedRoster(
