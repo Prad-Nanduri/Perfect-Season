@@ -356,7 +356,7 @@ export function SportDraft({ sport }: { sport: SportId }) {
                       Tap a player, then tap a highlighted slot.
                     </p>
                   </div>
-                  <div className="mt-3 flex min-w-0 gap-2 overflow-x-auto pb-2 lg:grid lg:grid-cols-2">
+                  <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                     {spin.candidates.map((candidate) => (
                       <CandidateCard
                         key={candidate.playerId}
