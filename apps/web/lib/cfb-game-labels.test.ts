@@ -3,7 +3,7 @@ import type { GameResult } from '@perfect-season/sport-engine-core';
 import { cfbOpponentLabel, cfbOpponentStrength, labelCfbResult } from './cfb-game-labels';
 import type { StoredResult } from './server/draft-store';
 
-const teams = [{ cfbdTeamId: 4, school: 'Champion U' }];
+const teams = [{ cfbdTeamId: 4, school: 'Champion U', logoUrl: 'https://example.com/u.png' }];
 
 const game = (opponentId: string, facts: GameResult['facts'] = {}): GameResult => ({
   opponentId,
@@ -16,33 +16,36 @@ const game = (opponentId: string, facts: GameResult['facts'] = {}): GameResult =
 
 describe('cfbOpponentLabel', () => {
   it('resolves numeric cfbdTeamId opponents to the school name', () => {
-    expect(cfbOpponentLabel(game('4'), teams)).toBe('Champion U');
+    expect(cfbOpponentLabel(game('4'), teams)).toEqual({
+      name: 'Champion U',
+      logoUrl: 'https://example.com/u.png',
+    });
   });
 
   it('labels synthetic opponents by flavor, never showing the raw id', () => {
-    expect(cfbOpponentLabel(game('cfb-synth-rivalry-1', { flavor: 'rivalry' }), teams)).toBe(
+    expect(cfbOpponentLabel(game('cfb-synth-rivalry-1', { flavor: 'rivalry' }), teams).name).toBe(
       'Rivalry game',
     );
     expect(
       cfbOpponentLabel(
         game('cfb-synth-nonconference_marquee-2', { flavor: 'nonconference_marquee' }),
         teams,
-      ),
+      ).name,
     ).toBe('Marquee non-conference');
-    expect(cfbOpponentLabel(game('cfb-synth-conference-5', { flavor: 'conference' }), teams)).toBe(
-      'Conference opponent',
-    );
     expect(
-      cfbOpponentLabel(game('cfb-synth-nonconference-3', { flavor: 'nonconference' }), teams),
+      cfbOpponentLabel(game('cfb-synth-conference-5', { flavor: 'conference' }), teams).name,
+    ).toBe('Conference opponent');
+    expect(
+      cfbOpponentLabel(game('cfb-synth-nonconference-3', { flavor: 'nonconference' }), teams).name,
     ).toBe('Non-conference opponent');
   });
 
   it('falls back for unknown ids and missing flavors', () => {
-    expect(cfbOpponentLabel(game('999'), teams)).toBe('Opponent');
-    expect(cfbOpponentLabel(game('cfb-synth-other-1', { flavor: 'mystery' }), teams)).toBe(
+    expect(cfbOpponentLabel(game('999'), teams).name).toBe('Opponent');
+    expect(cfbOpponentLabel(game('cfb-synth-other-1', { flavor: 'mystery' }), teams).name).toBe(
       'Opponent',
     );
-    expect(cfbOpponentLabel(game('cfb-synth-other-1'), teams)).toBe('Opponent');
+    expect(cfbOpponentLabel(game('cfb-synth-other-1'), teams).name).toBe('Opponent');
   });
 });
 
@@ -92,6 +95,7 @@ describe('labelCfbResult', () => {
     const labeled = labelCfbResult(result, teams);
     const games = labeled.season.stages[0]?.games ?? [];
     expect(games[0]?.opponentName).toBe('Champion U');
+    expect(games[0]?.opponentLogoUrl).toBe('https://example.com/u.png');
     expect(games[1]?.opponentName).toBe('Conference opponent');
     expect(labeled.mvp.playerId).toBe('p-qb1');
   });

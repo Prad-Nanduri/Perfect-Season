@@ -3,9 +3,10 @@ import type {
   DraftPoolUnit,
   PlayerCandidate,
 } from '@perfect-season/sport-engine-core';
-import { createSeed } from '@perfect-season/sport-engine-core/utils';
+import { createRng, createSeed } from '@perfect-season/sport-engine-core/utils';
 import type { CfbFixtureData, CfbSportEngine } from '@perfect-season/sport-engine-cfb';
 import {
+  buildCfbOpponentSlate,
   CFB_RATING_MODEL_VERSION,
   describeConference,
   filterSpinPool,
@@ -196,18 +197,27 @@ export function createCfbAdapter(): SportDraftAdapter {
         alternateColor: team.alternateColor,
       };
     },
-    opponentContext: (unit) => ({
-      season: unit?.sportId === 'cfb' ? unit.season : 2023,
-      modelVersion: CFB_SIMULATION_MODEL_VERSION,
-      dataVersion: CFB_SIMULATION_DATA_VERSION,
-      opponents: [],
-      facts: {},
-    }),
-    simSeed: (draftId) => createSeed('cfb-sim', draftId),
-    simulationOptions: (input) => {
-      if (input.fullCampaign === true) throw new Error('Full Campaign is not available yet');
-      return {};
+    opponentContext: (unit) => {
+      const data = getCfbData();
+      const opponents =
+        unit?.sportId === 'cfb'
+          ? buildCfbOpponentSlate({
+              unit,
+              programSeasons: data.programSeasons,
+              teams: data.teams,
+              rng: createRng(`cfb-slate:${unit.programId}:${unit.season}`),
+            })
+          : [];
+      return {
+        season: unit?.sportId === 'cfb' ? unit.season : 2023,
+        modelVersion: CFB_SIMULATION_MODEL_VERSION,
+        dataVersion: CFB_SIMULATION_DATA_VERSION,
+        opponents,
+        facts: {},
+      };
     },
+    simSeed: (draftId) => createSeed('cfb-sim', draftId),
+    simulationOptions: (input) => ({ fullCampaign: input.fullCampaign === true }),
     buildCompletedRoster: (state) => completedRoster(state, getCfbEngine(), getCfbData()),
     toClientPick: (pick, ratingHidden) => ({ ...pick, rating: ratingHidden ? null : pick.rating }),
     pickMvp: (state, scheme) => {

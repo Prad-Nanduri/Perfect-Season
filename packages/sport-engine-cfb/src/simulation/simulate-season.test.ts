@@ -89,13 +89,24 @@ describe('simulateCfbSeason (spec §2A.4, §2A.5)', () => {
     expect(first).toEqual(second);
   });
 
-  it('gates Full Campaign off by default even when the mode requests it', () => {
+  it('runs Full Campaign when the mode requests it', () => {
     const result = simulateCfbSeason(roster, fullCampaign, context, {
       seed: 'gated',
       rng: createRng('gated'),
       simulateGame: (_r, opponent) => game(true, opponent.id),
     });
     expect(result.record).toEqual({ wins: 12, losses: 0, ties: 0 });
+    expect(result.stages).toHaveLength(3);
+    expect(result.postseasonResult).toBe('national_champion');
+    expect(result.facts.fullCampaign).toBe(true);
+  });
+
+  it('keeps Quick Season when the mode does not request Full Campaign', () => {
+    const result = simulateCfbSeason(roster, quickSeason, context, {
+      seed: 'quick',
+      rng: createRng('quick'),
+      simulateGame: (_r, opponent) => game(true, opponent.id),
+    });
     expect(result.stages).toHaveLength(1);
     expect(result.postseasonResult).toBeNull();
     expect(result.facts.fullCampaign).toBe(false);

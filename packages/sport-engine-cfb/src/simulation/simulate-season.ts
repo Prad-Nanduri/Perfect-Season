@@ -41,7 +41,7 @@ export interface CfbSeasonDependencies {
   readonly simulateGame?: typeof defaultSimulateGame;
   readonly rng?: DeterministicRng;
   readonly seed?: string;
-  // Test hook: the shipping default is ENABLE_FULL_CAMPAIGN (false).
+  // Test hook: overrides the shipping default ENABLE_FULL_CAMPAIGN.
   readonly enableFullCampaign?: boolean;
 }
 
@@ -100,6 +100,35 @@ function syntheticOpponent(id: string, name: string, sdOffset: number): Opponent
     facts: {},
   };
 }
+
+// Bowl names for each CFP round (new-year's-six rotation, abridged) and for
+// non-playoff consolation bowls; picked deterministically via the run's rng.
+const CFP_ROUND_BOWLS: Readonly<Record<CfpRound, readonly string[]>> = {
+  first_round: [],
+  quarterfinal: ['Rose Bowl', 'Sugar Bowl', 'Orange Bowl', 'Cotton Bowl Classic'],
+  semifinal: ['Fiesta Bowl', 'Peach Bowl'],
+  championship: ['CFP National Championship'],
+};
+
+const CONSOLATION_BOWLS = [
+  'ReliaQuest Bowl',
+  'Alamo Bowl',
+  'Pop-Tarts Bowl',
+  'Holiday Bowl',
+  'Citrus Bowl',
+  'Gator Bowl',
+  'Sun Bowl',
+  'Music City Bowl',
+  'Liberty Bowl',
+  'Texas Bowl',
+] as const;
+
+const CFP_ROUND_LABELS: Readonly<Record<CfpRound, string>> = {
+  first_round: 'CFP First Round',
+  quarterfinal: 'Quarterfinal',
+  semifinal: 'Semifinal',
+  championship: 'National Championship',
+};
 
 function singleGameStage(
   id: string,
@@ -179,7 +208,13 @@ export function simulateCfbSeason(
     };
   }
 
-  const postseason = simulatePostseasonAndBracket(rosterRating, regularRecord, simulateGame, rng);
+  const postseason = simulatePostseasonAndBracket(
+    rosterRating,
+    regularRecord,
+    simulateGame,
+    rng,
+    opponentContext.opponents,
+  );
   return {
     draftId: roster.draftId,
     sportId: 'cfb',
@@ -208,38 +243,72 @@ interface PostseasonOutcome {
   readonly cfpSeed: number | null;
 }
 
+function drawPostseasonOpponent(
+  pool: readonly Opponent[],
+  used: Set<string>,
+  rng: DeterministicRng,
+  fallback: Opponent,
+): Opponent {
+  const remaining = pool.filter((opponent) => !used.has(opponent.id));
+  if (remaining.length === 0) return fallback;
+  // Postseason draw leans on the stronger half of the pool.
+  const sorted = [...remaining].sort((a, b) => b.rating - a.rating);
+  const window = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2)));
+  const pick = window[rng.integer(0, window.length)];
+  if (pick === undefined) return fallback;
+  used.add(pick.id);
+  return pick;
+}
+
+function pickBowlName(names: readonly string[], rng: DeterministicRng): string | null {
+  if (names.length === 0) return null;
+  return names[rng.integer(0, names.length)] ?? null;
+}
+
 function simulatePostseasonAndBracket(
   rosterRating: number,
   regularRecord: SeasonRecord,
   simulateGame: typeof defaultSimulateGame,
   rng: DeterministicRng,
+  pool: readonly Opponent[],
 ): PostseasonOutcome {
+  const usedOpponents = new Set<string>();
+
+  const bowlGame = (): GameResult => {
+    const bowlName = pickBowlName(CONSOLATION_BOWLS, rng) ?? 'Bowl';
+    const opponent = drawPostseasonOpponent(
+      pool,
+      usedOpponents,
+      rng,
+      syntheticOpponent('bowl', 'Bowl opponent', 1),
+    );
+    return toGameResult(simulateGame(rosterRating, opponent, CFB_SIMULATION_CONFIG, rng), {
+      stage: 'bowl',
+      bowlName,
+    });
+  };
+
   // ≥10 regular-season wins earns the 13th conference-championship game.
   if (regularRecord.wins < CFB_CONFERENCE_TITLE_WIN_THRESHOLD) {
-    const bowl = toGameResult(
-      simulateGame(
-        rosterRating,
-        syntheticOpponent('bowl', 'Bowl opponent', 1),
-        CFB_SIMULATION_CONFIG,
-        rng,
-      ),
-      { stage: 'bowl' },
-    );
+    const bowl = bowlGame();
+    const stageName = typeof bowl.facts.bowlName === 'string' ? bowl.facts.bowlName : 'Bowl Game';
     return {
       result: bowl.outcome === 'win' ? 'bowl_won' : 'bowl_lost',
-      stages: [singleGameStage('bowl', 'Bowl Game', bowl, 'won', 'lost')],
+      stages: [singleGameStage('bowl', stageName, bowl, 'won', 'lost')],
       conferenceChampion: false,
       cfpSeed: null,
     };
   }
 
+  const conferencePool = pool.filter((opponent) => opponent.facts.flavor === 'conference');
+  const titleOpponent = drawPostseasonOpponent(
+    conferencePool.length > 0 ? conferencePool : pool,
+    usedOpponents,
+    rng,
+    syntheticOpponent('conference-title', 'Conference Championship opponent', 1),
+  );
   const titleGame = toGameResult(
-    simulateGame(
-      rosterRating,
-      syntheticOpponent('conference-title', 'Conference Championship opponent', 1),
-      CFB_SIMULATION_CONFIG,
-      rng,
-    ),
+    simulateGame(rosterRating, titleOpponent, CFB_SIMULATION_CONFIG, rng),
     { stage: 'conference_championship' },
   );
   const conferenceChampion = titleGame.outcome === 'win';
@@ -253,18 +322,12 @@ function simulatePostseasonAndBracket(
 
   // CFP bid: conference champion, or undefeated regular season.
   if (!conferenceChampion && regularRecord.wins < CFB_REGULAR_SEASON_GAMES) {
-    const bowl = toGameResult(
-      simulateGame(
-        rosterRating,
-        syntheticOpponent('bowl', 'Bowl opponent', 1),
-        CFB_SIMULATION_CONFIG,
-        rng,
-      ),
-      { stage: 'bowl' },
-    );
+    const bowl = bowlGame();
+    const bowlStageName =
+      typeof bowl.facts.bowlName === 'string' ? bowl.facts.bowlName : 'Bowl Game';
     return {
       result: bowl.outcome === 'win' ? 'bowl_won' : 'bowl_lost',
-      stages: [titleStage, singleGameStage('bowl', 'Bowl Game', bowl, 'won', 'lost')],
+      stages: [titleStage, singleGameStage('bowl', bowlStageName, bowl, 'won', 'lost')],
       conferenceChampion,
       cfpSeed: null,
     };
@@ -276,15 +339,19 @@ function simulatePostseasonAndBracket(
   const stages: SeasonStageResult[] = [titleStage];
   const cfpGames: GameResult[] = [];
   for (const round of rounds) {
-    const game = toGameResult(
-      simulateGame(
-        rosterRating,
-        syntheticOpponent(`cfp-${round}`, `CFP ${round} opponent`, CFP_ROUND_SD_OFFSETS[round]),
-        CFB_SIMULATION_CONFIG,
-        rng,
-      ),
-      { stage: 'cfp', round },
+    const bowlName = pickBowlName(CFP_ROUND_BOWLS[round], rng);
+    const opponent = drawPostseasonOpponent(
+      pool,
+      usedOpponents,
+      rng,
+      syntheticOpponent(`cfp-${round}`, `CFP ${round} opponent`, CFP_ROUND_SD_OFFSETS[round]),
     );
+    const game = toGameResult(simulateGame(rosterRating, opponent, CFB_SIMULATION_CONFIG, rng), {
+      stage: 'cfp',
+      round,
+      roundLabel: CFP_ROUND_LABELS[round],
+      ...(bowlName !== null ? { bowlName } : {}),
+    });
     cfpGames.push(game);
     if (game.outcome !== 'win') {
       stages.push({

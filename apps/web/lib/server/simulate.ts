@@ -15,13 +15,20 @@ export function pickMvp(
 
 export async function simulateDraft(
   state: DraftState,
-  opts: { readonly fullGauntlet: boolean; readonly seed: string | null },
+  opts: {
+    readonly fullGauntlet: boolean;
+    readonly fullCampaign?: boolean;
+    readonly seed: string | null;
+  },
 ): Promise<StoredResult> {
   const adapter = getSportAdapter(state.sportId);
   const engine = adapter.engine();
   const roster = completedRoster(state);
   const unit = [...state.usedUnits].at(-1) ?? null;
-  const input = state.sportId === 'nfl' ? { fullGauntlet: opts.fullGauntlet } : {};
+  const input =
+    state.sportId === 'nfl'
+      ? { fullGauntlet: opts.fullGauntlet }
+      : { fullCampaign: opts.fullCampaign === true };
   const options = adapter.simulationOptions(input);
   const mode: SimulationMode = {
     modeId: 'core',
