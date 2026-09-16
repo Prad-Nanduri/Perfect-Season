@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     tokenHash !== null
       ? await magicLink.verify(tokenHash, params.get('type'))
       : code !== null
-        ? await magicLink.exchangeCode(code)
+        ? await magicLink.exchangeCode(code, guestToken)
         : null;
   if (verified === null) return accountRedirect(request, 'invalid');
   const { user } = await linkGuestToAccount(

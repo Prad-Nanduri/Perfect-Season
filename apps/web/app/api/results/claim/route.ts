@@ -66,7 +66,7 @@ export const POST = withJsonErrors(async (request: Request) => {
   });
   const redirectTo = new URL('/api/auth/callback', request.url).toString();
   try {
-    await supabaseMagicLink().send(email.trim().toLowerCase(), redirectTo);
+    await supabaseMagicLink().send(email.trim().toLowerCase(), redirectTo, guestToken);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Could not send the link' },
