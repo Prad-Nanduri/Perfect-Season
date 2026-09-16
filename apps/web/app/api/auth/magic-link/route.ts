@@ -13,7 +13,8 @@ export const POST = withJsonErrors(async (request: Request) => {
       { status: 503 },
     );
   }
-  if (readGuestToken(request) === null) {
+  const guestToken = readGuestToken(request);
+  if (guestToken === null) {
     return NextResponse.json({ error: 'Start a guest session first' }, { status: 400 });
   }
   let body: unknown;
@@ -28,7 +29,7 @@ export const POST = withJsonErrors(async (request: Request) => {
   }
   const redirectTo = new URL('/api/auth/callback', request.url).toString();
   try {
-    await supabaseMagicLink().send(email.trim().toLowerCase(), redirectTo);
+    await supabaseMagicLink().send(email.trim().toLowerCase(), redirectTo, guestToken);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not send the link';
     if (/rate.?limit/i.test(message)) {
