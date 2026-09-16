@@ -136,7 +136,12 @@ export async function persistCompletedResult(
         difficulty: state.difficulty,
         rating_mode: state.ratingMode,
         scheme_preset: state.schemeId,
-        campaign_mode: state.sportId === 'cfb' ? 'quick_season' : null,
+        campaign_mode:
+          state.sportId === 'cfb'
+            ? result.season.facts.fullCampaign === true
+              ? 'full_campaign'
+              : 'quick_season'
+            : null,
         status: 'complete',
         created_at: state.createdAt,
         completed_at: result.simulatedAt,
@@ -231,8 +236,17 @@ export interface LeaderboardEntry {
   readonly completedAt: string;
 }
 
-interface LeaderboardRow {
+interface LeaderboardDraftRow {
   id: number;
+  sport_id: SportId;
+  difficulty: Difficulty;
+  rating_mode: RatingMode;
+  completed_at: string | null;
+  user_id: number | null;
+}
+
+interface LeaderboardResultRow {
+  draft_id: number;
   record_wins: number;
   record_losses: number;
   points_for: number;
@@ -240,16 +254,10 @@ interface LeaderboardRow {
   postseason_result: string | null;
   simulated_at: string;
   detail_jsonb: { ties?: number; trophies?: unknown[] } | null;
-  drafts: {
-    id: number;
-    sport_id: SportId;
-    difficulty: Difficulty;
-    rating_mode: RatingMode;
-    completed_at: string | null;
-    users: { display_name: string } | null;
-  } | null;
 }
 
+// Two plain selects joined in app code: the embedded-join form proved flaky
+// against the hosted PostgREST (empty embeds on some filters, no error).
 export async function listLeaderboard(input: {
   sport: SportId;
   difficulty: Difficulty | 'all';
@@ -257,24 +265,55 @@ export async function listLeaderboard(input: {
 }): Promise<readonly LeaderboardEntry[]> {
   if (!isLeaderboardConfigured()) return [];
   const supabase = createSupabaseServiceClient();
-  let query = supabase
+  let draftQuery = supabase
+    .from('drafts')
+    .select('id,sport_id,difficulty,rating_mode,completed_at,user_id')
+    .eq('sport_id', input.sport)
+    .eq('status', 'complete')
+    .limit(500);
+  if (input.difficulty !== 'all') draftQuery = draftQuery.eq('difficulty', input.difficulty);
+  const { data: draftRows, error: draftError } = await draftQuery;
+  if (draftError || draftRows === null || draftRows.length === 0) {
+    if (draftError) console.warn('[leaderboard] drafts query failed', draftError.message);
+    return [];
+  }
+  const drafts = new Map(
+    (draftRows as unknown as LeaderboardDraftRow[]).map((row) => [row.id, row]),
+  );
+
+  const { data: resultRows, error: resultError } = await supabase
     .from('season_results')
     .select(
-      'id,record_wins,record_losses,points_for,points_against,postseason_result,simulated_at,detail_jsonb,drafts!inner(id,sport_id,difficulty,rating_mode,completed_at,users(display_name))',
+      'draft_id,record_wins,record_losses,points_for,points_against,postseason_result,simulated_at,detail_jsonb',
     )
-    .eq('drafts.sport_id', input.sport)
-    .eq('drafts.status', 'complete')
+    .in('draft_id', [...drafts.keys()])
     .order('record_wins', { ascending: false })
     .order('points_for', { ascending: false })
-    .limit(200);
-  if (input.difficulty !== 'all') query = query.eq('drafts.difficulty', input.difficulty);
-  const { data, error } = await query;
-  if (error || data === null) {
-    if (error) console.warn('[leaderboard] query failed', JSON.stringify(error));
+    .limit(500);
+  if (resultError || resultRows === null) {
+    if (resultError) console.warn('[leaderboard] results query failed', resultError.message);
     return [];
   }
 
-  const rows = (data as unknown as LeaderboardRow[]).filter((row) => row.drafts !== null);
+  const userIds = [
+    ...new Set(
+      [...drafts.values()].map((draft) => draft.user_id).filter((id): id is number => id !== null),
+    ),
+  ];
+  const aliases = new Map<number, string>();
+  if (userIds.length > 0) {
+    const { data: userRows } = await supabase
+      .from('users')
+      .select('id,display_name')
+      .in('id', userIds);
+    for (const user of (userRows ?? []) as { id: number; display_name: string | null }[]) {
+      if (user.display_name !== null) aliases.set(user.id, user.display_name);
+    }
+  }
+
+  const rows = (resultRows as unknown as LeaderboardResultRow[]).filter(
+    (row) => drafts.get(row.draft_id) !== undefined,
+  );
   rows.sort((a, b) => {
     if (b.record_wins !== a.record_wins) return b.record_wins - a.record_wins;
     if (a.record_losses !== b.record_losses) return a.record_losses - b.record_losses;
@@ -285,11 +324,12 @@ export async function listLeaderboard(input: {
   });
   const limit = Math.min(input.limit ?? 50, 100);
   return rows.slice(0, limit).map((row, index) => {
-    const draft = row.drafts!;
+    const draft = drafts.get(row.draft_id)!;
     const ties = row.detail_jsonb?.ties ?? 0;
     return {
       rank: index + 1,
-      alias: draft.users?.display_name ?? guestAlias(draft.id),
+      alias:
+        (draft.user_id !== null ? aliases.get(draft.user_id) : undefined) ?? guestAlias(draft.id),
       sport: draft.sport_id,
       difficulty: draft.difficulty,
       ratingMode: draft.rating_mode,

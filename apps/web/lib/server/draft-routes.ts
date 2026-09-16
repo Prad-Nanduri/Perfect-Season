@@ -321,7 +321,8 @@ export async function simulate(sportId: SportId, request: Request, id: string): 
   const input = body as Record<string, unknown>;
   if (input.fullGauntlet !== undefined && typeof input.fullGauntlet !== 'boolean')
     return errorResponse('fullGauntlet must be a boolean', 400);
-  if (input.fullCampaign === true) return errorResponse('Full Campaign is not available yet', 400);
+  if (input.fullCampaign !== undefined && typeof input.fullCampaign !== 'boolean')
+    return errorResponse('fullCampaign must be a boolean', 400);
   const seed = input.seed;
   if (seed !== undefined && typeof seed !== 'string')
     return errorResponse('seed must be a string', 400);
@@ -331,6 +332,7 @@ export async function simulate(sportId: SportId, request: Request, id: string): 
     await import('./simulate')
   ).simulateDraft(current, {
     fullGauntlet: input.fullGauntlet === true,
+    fullCampaign: input.fullCampaign === true,
     seed: typeof seed === 'string' ? seed : null,
   });
   const next = await store.update(id, { ...current, result });

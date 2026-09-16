@@ -11,6 +11,9 @@ export async function runMigrations(pool: Pool): Promise<void> {
       applied_at TIMESTAMPTZ DEFAULT now()
     )
   `);
+  // The tracking table is in `public` like everything else; RLS keeps anon key
+  // holders out while the table owner (the migrate role) is unaffected.
+  await pool.query('ALTER TABLE _dev_migrations ENABLE ROW LEVEL SECURITY');
 
   const migrationNames = (await readdir(migrationsDirectory))
     .filter((name) => name.endsWith('.sql'))

@@ -6,20 +6,26 @@ import { Trophy } from '@phosphor-icons/react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { useToast } from '../ui/toast';
-import type { StoredResult } from '../../lib/server/draft-store';
+import { TeamLogo } from '../ui/team-logo';
+import type { NflLabeledResult } from '../../lib/nfl-game-labels';
 import type { ClientDraft } from './types';
 import { SaveResultPrompt } from './save-result-prompt';
 
+export type TrophyInfoMap = Readonly<
+  Record<string, { readonly name: string; readonly description: string }>
+>;
+
 interface SeasonResultsProps {
   readonly draft: ClientDraft;
-  readonly result: StoredResult;
+  readonly result: NflLabeledResult;
+  readonly trophyInfo: TrophyInfoMap;
 }
 
 function recordLabel(record: { wins: number; losses: number; ties: number }): string {
   return `${record.wins}-${record.losses}${record.ties > 0 ? `-${record.ties}` : ''}`;
 }
 
-function outcomeLabel(result: StoredResult): string {
+function outcomeLabel(result: NflLabeledResult): string {
   switch (result.season.postseasonResult) {
     case 'won_super_bowl':
       return 'Won the Super Bowl';
@@ -36,7 +42,7 @@ function outcomeLabel(result: StoredResult): string {
   }
 }
 
-export function SeasonResults({ draft, result }: SeasonResultsProps) {
+export function SeasonResults({ draft, result, trophyInfo }: SeasonResultsProps) {
   const notify = useToast();
   const isPerfect = result.season.record.wins === 17 && result.season.record.losses === 0;
   const pointDifferential = result.season.pointsFor - result.season.pointsAgainst;
@@ -100,24 +106,21 @@ export function SeasonResults({ draft, result }: SeasonResultsProps) {
             <p className="mt-5 text-small text-muted">No trophies this season</p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {result.trophies.map((trophy) => (
-                <li
-                  key={trophy.code}
-                  data-testid={`trophy-${trophy.code}`}
-                  className="rounded-control border border-line bg-subtle p-3"
-                >
-                  <p className="font-bold text-ink">{trophy.code.replaceAll('_', ' ')}</p>
-                  <p className="mt-1 text-caption text-muted">
-                    {trophy.code === 'perfect_season'
-                      ? 'Finish the regular season 17-0.'
-                      : trophy.code === 'full_gauntlet'
-                        ? 'Finish 17-0 and win the Super Bowl in Full Gauntlet mode.'
-                        : trophy.code === 'worst_in_show'
-                          ? 'Finish the regular season 0-17.'
-                          : 'Lose at least three of the first four games, then finish 14-3 or better.'}
-                  </p>
-                </li>
-              ))}
+              {result.trophies.map((trophy) => {
+                const info = trophyInfo[trophy.code];
+                return (
+                  <li
+                    key={trophy.code}
+                    data-testid={`trophy-${trophy.code}`}
+                    className="rounded-control border border-line bg-subtle p-3"
+                  >
+                    <p className="font-bold text-ink">
+                      {info?.name ?? trophy.code.replaceAll('_', ' ')}
+                    </p>
+                    <p className="mt-1 text-caption text-muted">{info?.description ?? ''}</p>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -166,7 +169,12 @@ export function SeasonResults({ draft, result }: SeasonResultsProps) {
                       key={`${stage.id}-${index}`}
                       className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-control border border-line px-3 py-2 text-caption"
                     >
-                      <span className="truncate text-ink">{game.opponentId}</span>
+                      <span className="flex min-w-0 items-center gap-2 text-ink">
+                        {game.opponentTeam !== null ? (
+                          <TeamLogo team={game.opponentTeam} size="xs" />
+                        ) : null}
+                        <span className="truncate">{game.opponentName}</span>
+                      </span>
                       <span className="text-muted">{game.site}</span>
                       <span className="font-semibold text-ink">
                         {game.pointsFor}-{game.pointsAgainst}

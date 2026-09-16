@@ -30,10 +30,17 @@ export const POST = withJsonErrors(async (request: Request) => {
   try {
     await supabaseMagicLink().send(email.trim().toLowerCase(), redirectTo);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not send the link' },
-      { status: 502 },
-    );
+    const message = error instanceof Error ? error.message : 'Could not send the link';
+    if (/rate.?limit/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            'Too many sign-in emails were sent recently — please wait a few minutes and try again.',
+        },
+        { status: 429 },
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 502 });
   }
   return NextResponse.json({ sent: true });
 });

@@ -2,7 +2,10 @@ import type { GameResult } from '@perfect-season/sport-engine-core';
 import type { StoredResult } from './server/draft-store';
 import type { CfbTeam } from '@perfect-season/sport-engine-cfb';
 
-export type CfbLabeledGame = GameResult & { readonly opponentName: string };
+export type CfbLabeledGame = GameResult & {
+  readonly opponentName: string;
+  readonly opponentLogoUrl: string | null;
+};
 export type CfbLabeledResult = Omit<StoredResult, 'season'> & {
   readonly season: Omit<StoredResult['season'], 'stages'> & {
     readonly stages: readonly (Omit<StoredResult['season']['stages'][number], 'games'> & {
@@ -26,17 +29,17 @@ const FLAVOR_LABELS: Record<string, string> = {
  */
 export function cfbOpponentLabel(
   game: GameResult,
-  teams: readonly Pick<CfbTeam, 'cfbdTeamId' | 'school'>[],
-): string {
+  teams: readonly Pick<CfbTeam, 'cfbdTeamId' | 'school' | 'logoUrl'>[],
+): { readonly name: string; readonly logoUrl: string | null } {
   if (/^\d+$/.test(game.opponentId)) {
     const team = teams.find((entry) => entry.cfbdTeamId === Number(game.opponentId));
-    if (team !== undefined) return team.school;
+    if (team !== undefined) return { name: team.school, logoUrl: team.logoUrl };
   }
   const flavor = game.facts.flavor;
   if (typeof flavor === 'string' && flavor in FLAVOR_LABELS) {
-    return FLAVOR_LABELS[flavor] ?? 'Opponent';
+    return { name: FLAVOR_LABELS[flavor] ?? 'Opponent', logoUrl: null };
   }
-  return 'Opponent';
+  return { name: 'Opponent', logoUrl: null };
 }
 
 /** Slate-calibrated opponent strength (0–99), when the game carries it. */
@@ -48,7 +51,7 @@ export function cfbOpponentStrength(game: GameResult): number | null {
 /** Decorate every game in a stored CFB result with a resolved opponentName. */
 export function labelCfbResult(
   result: StoredResult,
-  teams: readonly Pick<CfbTeam, 'cfbdTeamId' | 'school'>[],
+  teams: readonly Pick<CfbTeam, 'cfbdTeamId' | 'school' | 'logoUrl'>[],
 ): CfbLabeledResult {
   return {
     ...result,
@@ -56,10 +59,10 @@ export function labelCfbResult(
       ...result.season,
       stages: result.season.stages.map((stage) => ({
         ...stage,
-        games: stage.games.map((game) => ({
-          ...game,
-          opponentName: cfbOpponentLabel(game, teams),
-        })),
+        games: stage.games.map((game) => {
+          const { name, logoUrl } = cfbOpponentLabel(game, teams);
+          return { ...game, opponentName: name, opponentLogoUrl: logoUrl };
+        }),
       })),
     },
   };

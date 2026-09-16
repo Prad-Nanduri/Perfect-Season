@@ -9,6 +9,7 @@ import { getDraftStore } from '../../../../../../lib/server/draft-store';
 import { getCfbTrophyDefinitions } from '@perfect-season/sport-engine-cfb';
 import { resolveProgramTheme } from '../../../../../../lib/cfb-theme';
 import { getCfbData } from '../../../../../../lib/server/sport-engines';
+import { fetchImageDataUri } from '../../../../../../lib/server/og-image';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,48 @@ export async function GET(_request: Request, context: { params: { id: string } }
   });
   const record = `${season.record.wins}-${season.record.losses}`;
   const trophyNames = new Map(getCfbTrophyDefinitions().map((item) => [item.code, item.name]));
+  const fullCampaign = season.facts.fullCampaign === true;
+  // Deepest bowl played, for the badge + footer line.
+  const bowlName =
+    season.stages
+      .flatMap((stage) => stage.games)
+      .map((game) => game.facts.bowlName)
+      .filter((name): name is string => typeof name === 'string')
+      .at(-1) ?? null;
+  const outcomeLabel =
+    season.postseasonResult === 'national_champion'
+      ? 'National Champions'
+      : season.postseasonResult === 'cfp_runner_up'
+        ? 'National runners-up'
+        : season.postseasonResult === 'cfp_semifinal'
+          ? 'CFP Semifinal exit'
+          : season.postseasonResult === 'cfp_quarterfinal'
+            ? 'CFP Quarterfinal exit'
+            : season.postseasonResult === 'cfp_first_round'
+              ? 'CFP First Round exit'
+              : season.postseasonResult === 'bowl_won'
+                ? `Won the ${bowlName ?? 'bowl'}`
+                : season.postseasonResult === 'bowl_lost'
+                  ? `Lost the ${bowlName ?? 'bowl'}`
+                  : null;
+  const exitBadge =
+    season.postseasonResult === 'national_champion'
+      ? { label: 'NATIONAL CHAMPIONS', color: '#e8b93c' }
+      : season.postseasonResult === 'cfp_runner_up'
+        ? { label: 'NATIONAL CHAMPIONSHIP', color: '#c8cdd2' }
+        : season.postseasonResult === 'cfp_semifinal'
+          ? { label: 'CFP SEMIFINAL', color: '#6ea8d8' }
+          : season.postseasonResult === 'cfp_quarterfinal'
+            ? { label: 'CFP QUARTERFINAL', color: '#6ec992' }
+            : season.postseasonResult === 'cfp_first_round'
+              ? { label: 'CFP FIRST ROUND', color: '#8a9a90' }
+              : bowlName !== null
+                ? { label: bowlName.toUpperCase(), color: theme.secondary }
+                : null;
+  const [mvpHeadshot, programLogo] = await Promise.all([
+    fetchImageDataUri(mvp.headshotUrl),
+    fetchImageDataUri(team?.logoUrl ?? null),
+  ]);
   const element = (
     <div
       style={{
@@ -105,16 +148,35 @@ export async function GET(_request: Request, context: { params: { id: string } }
           marginTop: 32,
         }}
       >
-        <div
-          style={{
-            background: theme.primary,
-            borderRadius: 999,
-            display: 'flex',
-            height: 16,
-            width: 16,
-          }}
-        />
-        MVP · {mvp.fullName}
+        {programLogo !== null ? (
+          // eslint-disable-next-line @next/next/no-img-element -- satori renders raw markup
+          <img src={programLogo} width={44} height={44} alt="" style={{ objectFit: 'contain' }} />
+        ) : (
+          <div
+            style={{
+              background: theme.primary,
+              borderRadius: 999,
+              display: 'flex',
+              height: 16,
+              width: 16,
+            }}
+          />
+        )}
+        {team?.school ?? 'Program'} · MVP · {mvp.fullName}
+        {mvpHeadshot !== null ? (
+          // eslint-disable-next-line @next/next/no-img-element -- satori renders raw markup
+          <img
+            src={mvpHeadshot}
+            width={56}
+            height={56}
+            alt=""
+            style={{
+              borderRadius: '50%',
+              border: `2px solid ${theme.secondary}`,
+              objectFit: 'cover',
+            }}
+          />
+        ) : null}
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 30 }}>
         {trophies.map((trophy) => (
@@ -132,9 +194,28 @@ export async function GET(_request: Request, context: { params: { id: string } }
           </div>
         ))}
       </div>
-      <div style={{ color: '#9caba1', display: 'flex', fontSize: 24, marginTop: 'auto' }}>
-        Conference championship: N/A (Quick Season) · CFP / bowl: N/A (Quick Season) · Ranking arc:
-        N/A — ranking system not built yet
+      <div style={{ alignItems: 'center', display: 'flex', gap: 20, marginTop: 'auto' }}>
+        {exitBadge !== null ? (
+          <div
+            style={{
+              border: `3px solid ${exitBadge.color}`,
+              borderRadius: 12,
+              color: exitBadge.color,
+              display: 'flex',
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: 2,
+              padding: '8px 16px',
+            }}
+          >
+            {exitBadge.label}
+          </div>
+        ) : null}
+        <div style={{ color: '#9caba1', display: 'flex', fontSize: 24 }}>
+          {fullCampaign
+            ? `Full Campaign${season.facts.conferenceChampion === true ? ' · Conference champions' : ''}${season.facts.cfpSeed !== null && season.facts.cfpSeed !== undefined ? ` · CFP seed ${season.facts.cfpSeed}` : ''}${outcomeLabel !== null ? ` · ${outcomeLabel}` : ''}`
+            : 'Quick Season · 12 games'}
+        </div>
       </div>
     </div>
   );

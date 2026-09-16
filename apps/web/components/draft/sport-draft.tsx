@@ -224,7 +224,7 @@ export function SportDraft({ sport }: { sport: SportId }) {
       await fetchJson(`/api/${sport}/drafts/${activeDraft.id}/simulate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(sport === 'nfl' ? { fullGauntlet } : {}),
+        body: JSON.stringify(sport === 'nfl' ? { fullGauntlet } : { fullCampaign: fullGauntlet }),
       });
       await refreshSession();
       router.push(`/play/${sport}/results/${activeDraft.id}`);
@@ -291,31 +291,20 @@ export function SportDraft({ sport }: { sport: SportId }) {
               <p className="font-display text-scoreboard font-semibold text-sport">
                 {activeDraft.aggregateRating?.toFixed(1)}
               </p>
-              {sport === 'cfb' ? <Badge tone="sport">Quick Season · 12 games</Badge> : null}
-              {sport === 'nfl' ? (
-                <label className="flex items-center gap-2 text-caption text-muted">
-                  <input
-                    type="checkbox"
-                    checked={fullGauntlet}
-                    onChange={(event) => setFullGauntlet(event.target.checked)}
-                    className="h-4 w-4 accent-action"
-                  />
-                  Full Gauntlet (playoffs)
-                </label>
-              ) : (
-                <label
-                  className="flex items-center gap-2 text-caption text-muted"
-                  title="Conference title → CFP/bowl arrives with the ranking system (§2A.4)"
-                >
-                  <input
-                    type="checkbox"
-                    disabled
-                    aria-disabled="true"
-                    className="h-4 w-4 accent-action"
-                  />
-                  Full Campaign — coming soon
-                </label>
-              )}
+              {sport === 'cfb' && !fullGauntlet ? (
+                <Badge tone="sport">Quick Season · 12 games</Badge>
+              ) : null}
+              <label className="flex items-center gap-2 text-caption text-muted">
+                <input
+                  type="checkbox"
+                  checked={fullGauntlet}
+                  onChange={(event) => setFullGauntlet(event.target.checked)}
+                  className="h-4 w-4 accent-action"
+                />
+                {sport === 'nfl'
+                  ? 'Full Gauntlet (playoffs)'
+                  : 'Full Campaign (conference title + CFP/bowl)'}
+              </label>
               <Button onClick={() => void simulateSeason()} loading={loading}>
                 Simulate season
               </Button>

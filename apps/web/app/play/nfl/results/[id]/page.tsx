@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { getNflTrophyDefinitions } from '@perfect-season/sport-engine-nfl';
 import { SeasonResults } from '../../../../../components/draft/season-results';
 import { toClientDraft } from '../../../../../lib/server/draft-client';
 import { getDraftStore } from '../../../../../lib/server/draft-store';
+import { labelNflResult } from '../../../../../lib/nfl-game-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,5 +27,13 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
   const state = await getDraftStore().get(params.id);
   if (state?.result === null || state === undefined) notFound();
   const draft = toClientDraft(state);
-  return <SeasonResults draft={draft} result={state.result} />;
+  const trophyInfo = Object.fromEntries(
+    getNflTrophyDefinitions().map((definition) => [
+      definition.code,
+      { name: definition.name, description: definition.description },
+    ]),
+  );
+  return (
+    <SeasonResults draft={draft} result={labelNflResult(state.result)} trophyInfo={trophyInfo} />
+  );
 }

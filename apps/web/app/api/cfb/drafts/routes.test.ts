@@ -86,21 +86,34 @@ describe('CFB draft routes', () => {
     expect(completed.draft.usedUnits).toHaveLength(24);
   });
 
-  it('rejects Full Campaign requests in Quick Season', async () => {
-    const draftId = await completeCfbDraft();
-    const response = await simulate(
-      new Request(`http://localhost/api/cfb/drafts/${draftId}/simulate`, {
-        method: 'POST',
-        body: JSON.stringify({ fullCampaign: true }),
-        headers: { 'content-type': 'application/json' },
-      }),
-      { params: { id: draftId } },
-    );
-    expect(response.status).toBe(400);
-    expect(await json<{ error: string }>(response)).toEqual({
-      error: 'Full Campaign is not available yet',
-    });
-  });
+  it(
+    'accepts Full Campaign requests and simulates the postseason',
+    { timeout: 30_000 },
+    async () => {
+      const draftId = await completeCfbDraft();
+      const response = await simulate(
+        new Request(`http://localhost/api/cfb/drafts/${draftId}/simulate`, {
+          method: 'POST',
+          body: JSON.stringify({ fullCampaign: true }),
+          headers: { 'content-type': 'application/json' },
+        }),
+        { params: { id: draftId } },
+      );
+      expect(response.status).toBe(201);
+      const payload = await json<{
+        result: {
+          season: {
+            stages: readonly { id: string }[];
+            postseasonResult: string | null;
+            facts: { fullCampaign?: boolean };
+          };
+        };
+      }>(response);
+      expect(payload.result.season.facts.fullCampaign).toBe(true);
+      expect(payload.result.season.stages.length).toBeGreaterThan(1);
+      expect(payload.result.season.postseasonResult).not.toBeNull();
+    },
+  );
 
   it(
     'simulates a 12-game Quick Season with one stage, no ties, and null postseason',

@@ -21,9 +21,16 @@ export async function GET(request: Request) {
   if (!isAuthConfigured()) return accountRedirect(request, 'disabled');
   const guestToken = readGuestToken(request);
   if (guestToken === null) return accountRedirect(request, 'noguest');
-  const tokenHash = new URL(request.url).searchParams.get('token_hash');
-  if (!tokenHash) return accountRedirect(request, 'invalid');
-  const verified = await supabaseMagicLink().verify(tokenHash);
+  const params = new URL(request.url).searchParams;
+  const magicLink = supabaseMagicLink();
+  const tokenHash = params.get('token_hash');
+  const code = params.get('code');
+  const verified =
+    tokenHash !== null
+      ? await magicLink.verify(tokenHash, params.get('type'))
+      : code !== null
+        ? await magicLink.exchangeCode(code)
+        : null;
   if (verified === null) return accountRedirect(request, 'invalid');
   const { user } = await linkGuestToAccount(
     getSessionStore(),

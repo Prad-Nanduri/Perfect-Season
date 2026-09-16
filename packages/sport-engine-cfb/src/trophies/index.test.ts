@@ -4,7 +4,7 @@ import type {
   TrophyEvalContext,
 } from '@perfect-season/sport-engine-core';
 import { describe, expect, it } from 'vitest';
-import { evaluateCfbTrophies, getCfbTrophyDefinitions } from './index';
+import { CFB_MVP_TROPHY_CODES, evaluateCfbTrophies, getCfbTrophyDefinitions } from './index';
 
 const roster = {
   draftId: 'd1',
@@ -56,14 +56,15 @@ function regularGames(games: SeasonResult['stages'][number]['games']): SeasonRes
 }
 
 describe('CFB trophies (spec §2A.5, §2A.7)', () => {
-  it('defines exactly the four Quick Season MVP trophies', () => {
+  it('defines the MVP trophies plus the Full Campaign championship trophy', () => {
     expect(getCfbTrophyDefinitions().map((definition) => definition.code)).toEqual([
       'undefeated_untied',
+      'the_natty',
       'statement_win',
       'overtime_classic',
       'legacy_era_lineup',
     ]);
-    expect(getCfbTrophyDefinitions()).toHaveLength(4);
+    expect(getCfbTrophyDefinitions()).toHaveLength(5);
   });
 
   it('awards Undefeated & Untied only for 12-0-0', () => {
@@ -78,9 +79,10 @@ describe('CFB trophies (spec §2A.5, §2A.7)', () => {
     );
   });
 
-  it('retains The Natty as a gated non-MVP trophy', () => {
+  it('exposes The Natty as an earnable non-MVP trophy', () => {
     const definitions = getCfbTrophyDefinitions();
-    expect(definitions.some((definition) => definition.code === 'the_natty')).toBe(false);
+    expect(definitions.some((definition) => definition.code === 'the_natty')).toBe(true);
+    expect(CFB_MVP_TROPHY_CODES).not.toContain('the_natty');
   });
 
   it('awards Statement Win for a sufficiently strong regular-season win', () => {

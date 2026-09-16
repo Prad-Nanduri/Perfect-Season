@@ -7,6 +7,7 @@ import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 import { getDraftStore } from '../../../../../../lib/server/draft-store';
 import { getNflTrophyDefinitions } from '@perfect-season/sport-engine-nfl';
+import { fetchImageDataUri } from '../../../../../../lib/server/og-image';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,20 @@ export async function GET(_request: Request, context: { params: { id: string } }
             : season.postseasonResult === 'lost_wild_card'
               ? 'Lost in the Wild Card Round'
               : 'Missed the playoffs';
+  // Each playoff exit gets its own badge styling — gold for a Lombardi run.
+  const exitBadge =
+    season.postseasonResult === 'won_super_bowl'
+      ? { label: 'SUPER BOWL CHAMPIONS', color: '#e8b93c', border: '#e8b93c' }
+      : season.postseasonResult === 'lost_super_bowl'
+        ? { label: 'SUPER BOWL', color: '#c8cdd2', border: '#c8cdd2' }
+        : season.postseasonResult === 'lost_conference'
+          ? { label: 'CONFERENCE CHAMPIONSHIP', color: '#6ea8d8', border: '#6ea8d8' }
+          : season.postseasonResult === 'lost_divisional'
+            ? { label: 'DIVISIONAL ROUND', color: '#6ec992', border: '#6ec992' }
+            : season.postseasonResult === 'lost_wild_card'
+              ? { label: 'WILD CARD', color: '#8a9a90', border: '#8a9a90' }
+              : null;
+  const mvpHeadshot = await fetchImageDataUri(mvp.headshotUrl);
   const element = (
     <div
       style={{
@@ -108,11 +123,27 @@ export async function GET(_request: Request, context: { params: { id: string } }
             Point differential {signed(season.pointsFor - season.pointsAgainst)}
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
-          <div style={{ color: '#9caba1', display: 'flex', fontSize: 22 }}>MVP</div>
-          <div style={{ display: 'flex', fontSize: 34, fontWeight: 700 }}>{mvp.fullName}</div>
-          <div style={{ color: '#6ec992', display: 'flex', fontSize: 28 }}>
-            {mvp.primaryPosition} {'\u00b7'} {mvp.rating}
+        <div style={{ alignItems: 'center', display: 'flex', gap: 18 }}>
+          {mvpHeadshot !== null ? (
+            // eslint-disable-next-line @next/next/no-img-element -- satori renders raw markup
+            <img
+              src={mvpHeadshot}
+              width={96}
+              height={96}
+              alt=""
+              style={{
+                borderRadius: '50%',
+                border: '3px solid #6ec992',
+                objectFit: 'cover',
+              }}
+            />
+          ) : null}
+          <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
+            <div style={{ color: '#9caba1', display: 'flex', fontSize: 22 }}>MVP</div>
+            <div style={{ display: 'flex', fontSize: 34, fontWeight: 700 }}>{mvp.fullName}</div>
+            <div style={{ color: '#6ec992', display: 'flex', fontSize: 28 }}>
+              {mvp.primaryPosition} {'\u00b7'} {mvp.rating}
+            </div>
           </div>
         </div>
       </div>
@@ -134,14 +165,32 @@ export async function GET(_request: Request, context: { params: { id: string } }
           </div>
         ))}
       </div>
-      <div style={{ alignItems: 'center', display: 'flex', marginTop: 'auto' }}>
+      <div style={{ alignItems: 'center', display: 'flex', gap: 32, marginTop: 'auto' }}>
         <div style={{ color: '#6ec992', display: 'flex', fontSize: 32 }}>
           17-0 {season.record.wins === 17 && season.record.losses === 0 ? 'YES' : 'NO'}
         </div>
         {fullGauntlet ? (
-          <div style={{ color: '#9caba1', display: 'flex', fontSize: 26, marginLeft: 32 }}>
-            {'Full Gauntlet \u00b7 '}
-            {gauntletLabel}
+          <div style={{ alignItems: 'center', display: 'flex', gap: 16 }}>
+            {exitBadge !== null ? (
+              <div
+                style={{
+                  border: `3px solid ${exitBadge.border}`,
+                  borderRadius: 12,
+                  color: exitBadge.color,
+                  display: 'flex',
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  padding: '8px 16px',
+                }}
+              >
+                {exitBadge.label}
+              </div>
+            ) : null}
+            <div style={{ color: '#9caba1', display: 'flex', fontSize: 26 }}>
+              {'Full Gauntlet \u00b7 '}
+              {gauntletLabel}
+            </div>
           </div>
         ) : null}
       </div>

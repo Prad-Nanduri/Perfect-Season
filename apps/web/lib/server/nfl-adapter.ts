@@ -1,5 +1,10 @@
-import type { CompletedRoster, DraftPoolUnit } from '@perfect-season/sport-engine-core';
-import type { NflFixtureData, NflSportEngine } from '@perfect-season/sport-engine-nfl';
+import type { CompletedRoster, DraftPoolUnit, Opponent } from '@perfect-season/sport-engine-core';
+import { ratingToElo } from '@perfect-season/simulation';
+import {
+  NFL_SIMULATION_CONFIG,
+  type NflFixtureData,
+  type NflSportEngine,
+} from '@perfect-season/sport-engine-nfl';
 import { buildCandidates, availableSeasons } from './candidates';
 import { getNflData, getNflEngine } from './nfl-engine';
 import type { DraftState, NflDraftPoolUnit } from './draft-store';
@@ -72,13 +77,45 @@ export function createNflAdapter(): SportDraftAdapter {
         eraTier: season?.eraTier ?? 'legacy',
       };
     },
-    opponentContext: () => ({
-      season: 2023,
-      modelVersion: NFL_SIMULATION_MODEL_VERSION,
-      dataVersion: NFL_SIMULATION_DATA_VERSION,
-      opponents: [],
-      facts: {},
-    }),
+    opponentContext: () => {
+      const data = getNflData();
+      const records = new Map(
+        data.franchiseSeasons
+          .filter((season) => season.season === 2023)
+          .map((season) => [season.franchiseKey, season]),
+      );
+      const opponents: Opponent[] = data.franchises.map((franchise) => {
+        const record = records.get(franchise.franchiseKey);
+        const games =
+          record === null || record === undefined || record.wins === null
+            ? 0
+            : record.wins + (record.losses ?? 0) + (record.ties ?? 0);
+        const winPct =
+          games > 0 && record !== undefined && record.wins !== null
+            ? (record.wins + 0.5 * (record.ties ?? 0)) / games
+            : 0.5;
+        // Map win% onto roughly a 30–90 strength band on the 0–99 scale.
+        const strength = Math.min(99, Math.max(0, 30 + winPct * 60));
+        return {
+          id: franchise.franchiseKey,
+          name: franchise.currentName,
+          rating: ratingToElo(strength, NFL_SIMULATION_CONFIG.ratingScale),
+          site: 'neutral',
+          facts: {
+            abbreviation: franchise.abbreviation,
+            conference: franchise.conference,
+            logoUrl: franchise.logoUrl,
+          },
+        };
+      });
+      return {
+        season: 2023,
+        modelVersion: NFL_SIMULATION_MODEL_VERSION,
+        dataVersion: NFL_SIMULATION_DATA_VERSION,
+        opponents,
+        facts: {},
+      };
+    },
     simSeed: (draftId) => `nfl-sim:${draftId}`,
     simulationOptions: (input) => ({ fullGauntlet: input.fullGauntlet === true }),
     buildCompletedRoster: (state) => completedRoster(state, getNflEngine(), getNflData()),

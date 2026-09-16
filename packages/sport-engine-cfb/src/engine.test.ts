@@ -265,6 +265,7 @@ describe('CfbSportEngine (spec §0.1, §2A)', () => {
   it('exposes CFB trophy definitions and evaluates Undefeated & Untied', () => {
     expect(engine.getTrophyDefinitions().map((definition) => definition.code)).toEqual([
       'undefeated_untied',
+      'the_natty',
       'statement_win',
       'overtime_classic',
       'legacy_era_lineup',
