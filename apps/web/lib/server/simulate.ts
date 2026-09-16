@@ -49,10 +49,31 @@ export async function simulateDraft(
   const scheme = engine.getSchemePresets().find((item) => item.id === state.schemeId);
   if (scheme === undefined)
     throw new Error(`Unknown ${state.sportId.toUpperCase()} scheme: ${state.schemeId}`);
+  const mvp = adapter.pickMvp(state, scheme);
+  // CFBD data has no headshots; enrich the MVP with an ESPN lookup (best-effort).
+  if (state.sportId === 'cfb' && mvp.headshotUrl === null) {
+    const { resolveCfbHeadshot } = await import('./cfb-headshot');
+    const headshotUrl =
+      mvp.unit.sportId === 'cfb'
+        ? await resolveCfbHeadshot({
+            fullName: mvp.fullName,
+            programId: mvp.unit.programId,
+          }).catch(() => null)
+        : null;
+    if (headshotUrl !== null) {
+      return {
+        season,
+        trophies,
+        mvp: { ...mvp, headshotUrl },
+        fullGauntlet: opts.fullGauntlet,
+        simulatedAt: evaluatedAt,
+      };
+    }
+  }
   return {
     season,
     trophies,
-    mvp: adapter.pickMvp(state, scheme),
+    mvp,
     fullGauntlet: opts.fullGauntlet,
     simulatedAt: evaluatedAt,
   };
