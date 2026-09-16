@@ -15,7 +15,14 @@ export type NflLabeledResult = Omit<StoredResult, 'season'> & {
   };
 };
 
+// Fixture data franchiseKeys vs ESPN abbreviations differ for two teams.
+const KEY_ALIASES: Readonly<Record<string, string>> = { LA: 'LAR', WAS: 'WSH' };
+
 const teamsByKey = new Map(nflTeams.map((team) => [team.abbreviation, team]));
+
+function teamFor(opponentId: string): Team | undefined {
+  return teamsByKey.get(opponentId) ?? teamsByKey.get(KEY_ALIASES[opponentId] ?? '');
+}
 
 function titleCase(id: string): string {
   return id
@@ -31,7 +38,7 @@ function titleCase(id: string): string {
  * the raw id is never shown.
  */
 export function nflOpponentLabel(game: GameResult): { name: string; team: Team | null } {
-  const team = teamsByKey.get(game.opponentId);
+  const team = teamFor(game.opponentId);
   if (team !== undefined) return { name: team.displayName, team };
   const synthetic = /^synthetic-(\d+)$/.exec(game.opponentId);
   if (synthetic !== null) return { name: `League opponent ${synthetic[1]}`, team: null };
