@@ -35,7 +35,7 @@ export function CandidateCard({
       {...draggable.attributes}
       {...draggable.listeners}
       onClick={onSelect}
-      className={`flex w-64 shrink-0 touch-none items-center gap-3 rounded-control border bg-surface p-3 text-left transition-colors lg:w-auto lg:min-w-0 ${
+      className={`flex w-full min-w-0 touch-pan-y items-center gap-3 rounded-control border bg-surface p-3 text-left transition-colors ${
         selected ? 'border-sport bg-sport/10' : 'border-line hover:border-sport/60'
       }`}
       aria-label={`${candidate.fullName}, ${candidate.primaryPosition}`}
